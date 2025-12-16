@@ -19,13 +19,12 @@
  *    - Effect.runPromise(effect) - Runs an effect and returns a Promise
  *
  * 4. Error Handling:
- *    - Typed errors - Effect tracks error types at compile time
- *    - Custom error classes - Define domain-specific errors
+ *    - Data.TaggedError - Effect's built-in way to create typed errors
  *    - Effect.catchAll - Handle all errors
  *    - Effect.catchTag - Handle specific tagged errors
  */
 
-import { Effect } from "effect";
+import { Effect, Data } from "effect";
 
 // =============================================================================
 // PART 1: Basic Operations with Effect.succeed
@@ -118,54 +117,50 @@ Effect.runPromise(divide(10, 2))
   .catch((error) => console.error("Error:", error));
 
 // =============================================================================
-// PART 3: Custom Error Types with Tagged Errors
+// PART 3: Custom Error Types with Data.TaggedError
 // =============================================================================
 
 /**
- * In Effect, we use tagged errors (discriminated unions) for type-safe error handling.
+ * Data.TaggedError - Effect's built-in way to create typed, tagged errors
  *
- * A tagged error has a `_tag` property that uniquely identifies the error type.
- * This allows Effect to:
- * 1. Track all possible error types at compile time
- * 2. Use `Effect.catchTag` to handle specific errors
- * 3. Provide exhaustive error handling
+ * This is the idiomatic Effect way to create custom errors. Benefits:
+ * 1. Automatically adds the _tag property for type discrimination
+ * 2. Extends Error, so it has stack traces and works with standard error handling
+ * 3. Provides structural equality (two errors with same data are equal)
+ * 4. Works seamlessly with Effect.catchTag for targeted error handling
  *
- * Convention: Name your error classes with "Error" prefix or suffix
- * and use the class name as the _tag value.
+ * Syntax:
+ *   class MyError extends Data.TaggedError("MyError")<{ field1: Type1, field2: Type2 }> {}
+ *
+ * The string "MyError" becomes the _tag value, and the type parameter defines
+ * the additional fields the error will have.
  */
 
 /**
  * ErrorDivideByZero - A custom tagged error for division by zero
  *
- * The `readonly _tag` property is required for Effect's error handling.
- * It acts as a discriminator for TypeScript's type narrowing.
+ * Using Data.TaggedError:
+ * - "ErrorDivideByZero" is the tag (accessible via _tag property)
+ * - The type parameter { dividend: number; divisor: number } defines extra fields
+ * - The error automatically extends Error, so it has message and stack
  */
-class ErrorDivideByZero {
-  // The _tag property uniquely identifies this error type
-  // 'readonly' ensures it can't be changed, which helps TypeScript narrow types
-  readonly _tag = "ErrorDivideByZero";
-
-  // You can add additional properties to provide context about the error
-  readonly message = "Cannot divide by zero";
-
-  // Optional: store the values that caused the error for debugging
-  constructor(
-    readonly dividend: number,
-    readonly divisor: number,
-  ) {}
-}
+class ErrorDivideByZero extends Data.TaggedError("ErrorDivideByZero")<{
+  dividend: number;
+  divisor: number;
+}> {}
 
 /**
- * divideWithCustomError - Division using a custom typed error
+ * divideWithCustomError - Division using Effect's Data.TaggedError
  *
  * Return type: Effect<number, ErrorDivideByZero, never>
  * - number = success type
  * - ErrorDivideByZero = the specific error type (not just string)
  *
- * This is more type-safe than using string errors because:
+ * Benefits over plain string errors:
  * 1. TypeScript knows exactly what errors can occur
  * 2. You can handle specific errors with Effect.catchTag
- * 3. The compiler ensures you handle all error cases
+ * 3. Errors carry context (dividend, divisor) for debugging
+ * 4. The compiler ensures you handle all error cases
  */
 function divideWithCustomError(
   a: number,
@@ -173,7 +168,8 @@ function divideWithCustomError(
 ): Effect.Effect<number, ErrorDivideByZero, never> {
   if (b === 0) {
     // Create and fail with our custom error, including context
-    return Effect.fail(new ErrorDivideByZero(a, b));
+    // Note: Data.TaggedError uses object syntax for constructor
+    return Effect.fail(new ErrorDivideByZero({ dividend: a, divisor: b }));
   }
 
   return Effect.succeed(a / b);
@@ -202,7 +198,8 @@ function divideWithCustomError(
 const safeDivide = divideWithCustomError(6, 0).pipe(
   // catchAll receives the error and must return an Effect
   Effect.catchAll((error) => {
-    console.log(`Caught error: ${error._tag} - ${error.message}`);
+    // With Data.TaggedError, we have access to _tag and all custom fields
+    console.log(`Caught error: ${error._tag}`);
     console.log(`Attempted: ${error.dividend} / ${error.divisor}`);
     // Recover by returning a default value
     return Effect.succeed(0);
@@ -220,11 +217,14 @@ console.log("Safe result:", safeResult); // Output: Safe result: 0
  * Other errors pass through unchanged.
  *
  * This is useful when you have multiple error types and want to handle them differently.
+ * The first argument is the _tag string, and Effect uses this to narrow the error type.
  */
 const handleSpecificError = divideWithCustomError(10, 0).pipe(
   // Only handle ErrorDivideByZero, other errors would pass through
   Effect.catchTag("ErrorDivideByZero", (error) => {
+    // TypeScript knows 'error' is ErrorDivideByZero here
     console.log(`Specific handler for: ${error._tag}`);
+    console.log(`Context: ${error.dividend} / ${error.divisor}`);
     return Effect.succeed(-1); // Return -1 as a sentinel value
   }),
 );
@@ -240,6 +240,45 @@ console.log("Specific error result:", specificResult); // Output: Specific error
 const validDivision = divideWithCustomError(12, 4);
 const validResult = Effect.runSync(validDivision);
 console.log("Valid division:", validResult); // Output: Valid division: 3
+
+// =============================================================================
+// PART 6: Multiple Error Types
+// =============================================================================
+
+/**
+ * You can define multiple error types for different failure cases.
+ * Effect tracks all possible errors in the type signature.
+ */
+
+// Another error type for negative numbers
+class ErrorNegativeNumber extends Data.TaggedError("ErrorNegativeNumber")<{
+  value: number;
+}> {}
+
+/**
+ * safeSqrt - Square root that fails for negative numbers
+ *
+ * Return type: Effect<number, ErrorNegativeNumber, never>
+ */
+function safeSqrt(
+  n: number,
+): Effect.Effect<number, ErrorNegativeNumber, never> {
+  if (n < 0) {
+    return Effect.fail(new ErrorNegativeNumber({ value: n }));
+  }
+  return Effect.succeed(Math.sqrt(n));
+}
+
+// Example: Combining operations with different error types
+// The resulting error type is the union: ErrorDivideByZero | ErrorNegativeNumber
+const combined = divideWithCustomError(16, 2).pipe(
+  // flatMap chains effects - the result of divide becomes input to safeSqrt
+  Effect.flatMap((result) => safeSqrt(result)),
+);
+
+// Type of combined: Effect<number, ErrorDivideByZero | ErrorNegativeNumber, never>
+const combinedResult = Effect.runSync(combined);
+console.log("Combined result (sqrt of 16/2):", combinedResult); // Output: 2.8284...
 
 // =============================================================================
 // SUMMARY OF CONCEPTS COVERED
@@ -262,10 +301,12 @@ console.log("Valid division:", validResult); // Output: Valid division: 3
  *    - Effect.runSync(effect) - Run synchronously (throws on failure)
  *    - Effect.runPromise(effect) - Run as Promise (rejects on failure)
  *
- * 4. Error Handling:
- *    - Use tagged errors (classes with _tag property) for type safety
- *    - Effect.catchAll - Handle any error
- *    - Effect.catchTag - Handle specific errors by tag
+ * 4. Error Handling with Data.TaggedError:
+ *    - class MyError extends Data.TaggedError("MyError")<{ fields }> {}
+ *    - Automatically adds _tag property for discrimination
+ *    - Extends Error for stack traces
+ *    - Use Effect.catchTag("TagName", handler) for specific errors
+ *    - Use Effect.catchAll(handler) for any error
  *
  * 5. Benefits over try/catch:
  *    - Errors are tracked in the type system
