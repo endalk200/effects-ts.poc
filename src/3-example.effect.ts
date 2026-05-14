@@ -4,7 +4,7 @@
  * Managing Services with Effect (The Effect Way)
  *
  * This file demonstrates Effect's powerful dependency injection system:
- * - Context.Tag - Creating service identifiers
+ * - Context.Service - Creating service identifiers
  * - Effect.Service - Modern way to define services
  * - Layer - Providing service implementations
  * - Effect.provide / Effect.provideService - Injecting dependencies
@@ -13,7 +13,7 @@
  *
  * Key Concepts:
  *
- * 1. Context.Tag<Identifier, Service>
+ * 1. Context.Service<Identifier, Service>
  *    - Creates a unique identifier for a service
  *    - Links the identifier to the service interface
  *    - Used to request and provide services
@@ -66,13 +66,13 @@ class EmailError extends Data.TaggedError("EmailError")<{
 }> {}
 
 // =============================================================================
-// 1. DEFINING SERVICES WITH Context.Tag
+// 1. DEFINING SERVICES WITH Context.Service
 // =============================================================================
 /**
- * Context.Tag creates a unique identifier for a service.
+ * Context.Service creates a unique identifier for a service.
  *
  * Syntax:
- *   class MyService extends Context.Tag("MyService")<
+ *   class MyService extends Context.Service<MyService, Shape>()("MyService")<
  *     MyService,
  *     { readonly method: (arg: A) => Effect<B, E, R> }
  *   >() {}
@@ -83,14 +83,12 @@ class EmailError extends Data.TaggedError("EmailError")<{
  */
 
 // Logger Service - A simple service with synchronous methods
-class Logger extends Context.Tag("Logger")<
-  Logger,
-  {
+class Logger extends Context.Service<Logger, {
     readonly info: (message: string) => Effect.Effect<void, never, never>;
     readonly error: (message: string) => Effect.Effect<void, never, never>;
     readonly debug: (message: string) => Effect.Effect<void, never, never>;
   }
->() {}
+>()("Logger") {}
 
 // Config Service - A service that provides configuration values
 interface ConfigShape {
@@ -99,12 +97,10 @@ interface ConfigShape {
   readonly maxRetries: number;
 }
 
-class Config extends Context.Tag("Config")<Config, ConfigShape>() {}
+class Config extends Context.Service<Config, ConfigShape>()("Config") {}
 
 // Database Service - A service with async methods that can fail
-class Database extends Context.Tag("Database")<
-  Database,
-  {
+class Database extends Context.Service<Database, {
     readonly findUser: (
       id: number
     ) => Effect.Effect<User | null, DatabaseError, never>;
@@ -115,19 +111,17 @@ class Database extends Context.Tag("Database")<
       id: number
     ) => Effect.Effect<boolean, DatabaseError, never>;
   }
->() {}
+>()("Database") {}
 
 // Email Service - Another async service
-class EmailService extends Context.Tag("EmailService")<
-  EmailService,
-  {
+class EmailService extends Context.Service<EmailService, {
     readonly sendEmail: (
       to: string,
       subject: string,
       body: string
     ) => Effect.Effect<boolean, EmailError, never>;
   }
->() {}
+>()("EmailService") {}
 
 // =============================================================================
 // 2. USING SERVICES IN EFFECTS
@@ -222,7 +216,7 @@ const InMemoryDatabaseLive: Layer.Layer<Database, never, never> = Layer.effect(
     return {
       findUser: (id: number) =>
         Effect.sync(() => users.get(id) ?? null).pipe(
-          Effect.catchAll(() =>
+          Effect.catch(() =>
             Effect.fail(
               new DatabaseError({
                 operation: "findUser",
@@ -235,7 +229,7 @@ const InMemoryDatabaseLive: Layer.Layer<Database, never, never> = Layer.effect(
         Effect.sync(() => {
           users.set(user.id, user);
         }).pipe(
-          Effect.catchAll(() =>
+          Effect.catch(() =>
             Effect.fail(
               new DatabaseError({
                 operation: "saveUser",
@@ -246,7 +240,7 @@ const InMemoryDatabaseLive: Layer.Layer<Database, never, never> = Layer.effect(
         ),
       deleteUser: (id: number) =>
         Effect.sync(() => users.delete(id)).pipe(
-          Effect.catchAll(() =>
+          Effect.catch(() =>
             Effect.fail(
               new DatabaseError({
                 operation: "deleteUser",
@@ -279,9 +273,7 @@ const MockEmailServiceLive: Layer.Layer<EmailService, never, never> =
  */
 
 // UserService that depends on Database, EmailService, and Logger
-class UserService extends Context.Tag("UserService")<
-  UserService,
-  {
+class UserService extends Context.Service<UserService, {
     readonly getUser: (
       id: number
     ) => Effect.Effect<User | null, DatabaseError, never>;
@@ -294,7 +286,7 @@ class UserService extends Context.Tag("UserService")<
       message: string
     ) => Effect.Effect<boolean, DatabaseError | EmailError, never>;
   }
->() {}
+>()("UserService") {}
 
 // This layer requires Database, EmailService, and Logger to construct UserService
 const UserServiceLive: Layer.Layer<
@@ -531,14 +523,12 @@ function makeTestLayer(): {
  */
 
 // Counter service with mutable state
-class Counter extends Context.Tag("Counter")<
-  Counter,
-  {
+class Counter extends Context.Service<Counter, {
     readonly increment: () => Effect.Effect<number, never, never>;
     readonly decrement: () => Effect.Effect<number, never, never>;
     readonly get: () => Effect.Effect<number, never, never>;
   }
->() {}
+>()("Counter") {}
 
 // Counter layer with mutable state
 const CounterLive: Layer.Layer<Counter, never, never> = Layer.effect(
@@ -576,20 +566,18 @@ const counterExample: Effect.Effect<number, never, Counter> = Effect.gen(
 // 9. SCOPED SERVICES (Resources with Cleanup)
 // =============================================================================
 /**
- * Layer.scoped creates services with resource lifecycle management.
+ * Layer.effect creates services with resource lifecycle management.
  * The service is acquired when the layer is built and released when done.
  */
 
-class ConnectionPool extends Context.Tag("ConnectionPool")<
-  ConnectionPool,
-  {
+class ConnectionPool extends Context.Service<ConnectionPool, {
     readonly getConnection: () => Effect.Effect<string, never, never>;
   }
->() {}
+>()("ConnectionPool") {}
 
 // A scoped layer that manages resource lifecycle
 const ConnectionPoolLive: Layer.Layer<ConnectionPool, never, never> =
-  Layer.scoped(
+  Layer.effect(
     ConnectionPool,
     Effect.gen(function* () {
       // Acquire resource
@@ -622,7 +610,7 @@ const runExamples: Effect.Effect<void, never, never> = Effect.gen(function* () {
   // Example 2: Using multiple services
   console.log("2. Using multiple services (findUser):");
   const foundUser = yield* Effect.provide(
-    findUser(1).pipe(Effect.catchAll(() => Effect.succeed(null))),
+    findUser(1).pipe(Effect.catch(() => Effect.succeed(null))),
     Layer.merge(ConsoleLoggerLive, InMemoryDatabaseLive)
   );
   console.log(`   Found user: ${foundUser?.name ?? "null"}\n`);
@@ -634,7 +622,7 @@ const runExamples: Effect.Effect<void, never, never> = Effect.gen(function* () {
       const userService = yield* UserService;
       return yield* userService.createUser("Bob", "bob@example.com");
     }).pipe(
-      Effect.catchAll(() =>
+      Effect.catch(() =>
         Effect.succeed({ id: 0, name: "Error", email: "" } as User)
       )
     ),
@@ -651,7 +639,7 @@ const runExamples: Effect.Effect<void, never, never> = Effect.gen(function* () {
       const userService = yield* UserService;
       const user = yield* userService.createUser("Test", "test@example.com");
       yield* userService.notifyUser(user.id, "Welcome!");
-    }).pipe(Effect.catchAll(() => Effect.succeed(undefined))),
+    }).pipe(Effect.catch(() => Effect.succeed(undefined))),
     testLayer
   );
 
@@ -742,8 +730,8 @@ export {
 /**
  * Key takeaways from this example:
  *
- * 1. Context.Tag - Define service identifiers:
- *    class MyService extends Context.Tag("MyService")<MyService, Interface>() {}
+ * 1. Context.Service - Define service identifiers:
+ *    class MyService extends Context.Service<MyService, Interface>()("MyService") {}
  *
  * 2. Access services in Effects:
  *    Effect.gen(function* () {
@@ -752,9 +740,9 @@ export {
  *    })
  *
  * 3. Create Layers:
- *    - Layer.succeed(Tag, implementation) - Simple implementation
- *    - Layer.effect(Tag, Effect) - Effectful construction
- *    - Layer.scoped(Tag, Effect) - With resource cleanup
+ *    - Layer.succeed(Tag)(implementation) - Simple implementation
+ *    - Layer.effect(Tag)(effect) - Effectful construction
+ *    - Layer.effect(Tag)(effect) - With resource cleanup
  *
  * 4. Compose Layers:
  *    - Layer.merge(layerA, layerB) - Combine layers

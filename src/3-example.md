@@ -73,50 +73,50 @@ Effect.runPromise(Effect.provide(logEffect, LoggerLayer));
 
 ---
 
-## Defining Services with `Context.Tag`
+## Defining Services with `Context.Service`
 
-Services are defined using `Context.Tag`:
+Services are defined using `Context.Service`:
 
 ```typescript
 import { Context, Effect } from "effect";
 
-class Logger extends Context.Tag("Logger")<
-  Logger,  // ← The tag itself (for self-reference)
+class Logger extends Context.Service<
+  Logger,
   {
     readonly info: (message: string) => Effect.Effect<void, never, never>;
     readonly error: (message: string) => Effect.Effect<void, never, never>;
   }
->() {}
+>()("Logger") {}
 ```
 
 **Anatomy:**
-- `Context.Tag("Logger")` – Creates a unique identifier (the string is for debugging)
+- `Context.Service<Logger, Shape>()("Logger")` – Creates a unique identifier (the string is for debugging)
 - First type param: The tag class itself
 - Second type param: The service interface
 
 ### Value Services (No Methods)
 
 ```typescript
-class Config extends Context.Tag("Config")<
+class Config extends Context.Service<
   Config,
   {
     readonly apiUrl: string;
     readonly timeout: number;
     readonly maxRetries: number;
   }
->() {}
+>()("Config") {}
 ```
 
 ### Method Services
 
 ```typescript
-class Database extends Context.Tag("Database")<
+class Database extends Context.Service<
   Database,
   {
     readonly findUser: (id: number) => Effect.Effect<User | null, DbError, never>;
     readonly saveUser: (user: User) => Effect.Effect<void, DbError, never>;
   }
->() {}
+>()("Database") {}
 ```
 
 ---
@@ -196,7 +196,8 @@ When your service needs mutable state:
 
 ```typescript
 const InMemoryDatabaseLive: Layer.Layer<Database, never, never> = Layer.effect(
-  Database,
+  Database
+)(
   Effect.sync(() => {
     // State captured in closure
     const users = new Map<number, User>();
@@ -223,13 +224,13 @@ const InMemoryDatabaseLive: Layer.Layer<Database, never, never> = Layer.effect(
 Real services often need other services:
 
 ```typescript
-class UserService extends Context.Tag("UserService")<
+class UserService extends Context.Service<
   UserService,
   {
     readonly getUser: (id: number) => Effect.Effect<User | null, DbError, never>;
     readonly createUser: (name: string, email: string) => Effect.Effect<User, DbError, never>;
   }
->() {}
+>()("UserService") {}
 
 // UserService needs Database and Logger to work
 const UserServiceLive: Layer.Layer<
@@ -237,7 +238,8 @@ const UserServiceLive: Layer.Layer<
   never,           // Errors
   Database | Logger // Requires!
 > = Layer.effect(
-  UserService,
+  UserService
+)(
   Effect.gen(function* () {
     // Access required services during construction
     const db = yield* Database;
@@ -451,16 +453,17 @@ function makeTestLayer(): {
 For resources that need cleanup (connections, file handles):
 
 ```typescript
-class ConnectionPool extends Context.Tag("ConnectionPool")<
+class ConnectionPool extends Context.Service<
   ConnectionPool,
   {
     readonly getConnection: () => Effect.Effect<Connection, never, never>;
   }
->() {}
+>()("ConnectionPool") {}
 
 const ConnectionPoolLive: Layer.Layer<ConnectionPool, never, never> = 
-  Layer.scoped(
-    ConnectionPool,
+  Layer.effect(
+    ConnectionPool
+  )(
     Effect.gen(function* () {
       // Acquire resource
       yield* Effect.log("🔌 Opening connection pool...");
@@ -496,14 +499,14 @@ const program = Effect.scoped(
 
 | Aspect | Traditional | Effect-TS |
 |--------|-------------|-----------|
-| Define service | Interface | `Context.Tag` |
+| Define service | Interface | `Context.Service` |
 | Implement service | Class/Object | `Layer` |
 | Access service | Constructor/Import | `yield* ServiceTag` |
 | Dependencies | Hidden/Manual | Tracked in `R` type |
 | Composition | Manual wiring | `Layer.merge/provide` |
 | Testing | Mock frameworks | Just create test layers |
 | Verification | Runtime errors | Compile-time errors |
-| Resource cleanup | Manual/try-finally | `Layer.scoped` + finalizers |
+| Resource cleanup | Manual/try-finally | `Layer.effect` + finalizers |
 
 ---
 
@@ -532,7 +535,7 @@ TypeScript ensures:
 
 ## Key Takeaways Before the Code
 
-1. **`Context.Tag`** – Define service identifiers with typed interfaces
+1. **`Context.Service`** – Define service identifiers with typed interfaces
 2. **`R` in `Effect<A, E, R>`** – Requirements tracked by the type system
 3. **`yield* ServiceTag`** – Access services in Effect.gen
 4. **`Layer.succeed`** – Create simple layers from values
@@ -541,7 +544,7 @@ TypeScript ensures:
 7. **`Layer.provide`** – Satisfy a layer's dependencies
 8. **`Effect.provide`** – Give layers to effects for execution
 9. **Testing** – Just create different layer implementations
-10. **`Layer.scoped`** – Automatic resource cleanup
+10. **`Layer.effect`** – Automatic resource cleanup
 
 ---
 
@@ -561,12 +564,12 @@ The exercises will have you create service tags, implement layers, compose compl
 import { Context, Layer, Effect } from "effect";
 
 // Define a service
-class MyService extends Context.Tag("MyService")<
+class MyService extends Context.Service<
   MyService,
   {
     readonly method: (arg: A) => Effect.Effect<B, E, never>;
   }
->() {}
+>()("MyService") {}
 
 // Access a service
 Effect.gen(function* () {
@@ -576,9 +579,8 @@ Effect.gen(function* () {
 });
 
 // Create layers
-Layer.succeed(Tag, implementation)     // Simple
-Layer.effect(Tag, Effect)              // With initialization
-Layer.scoped(Tag, Effect)              // With cleanup
+Layer.succeed(Tag)(implementation)     // Simple
+Layer.effect(Tag)(effect)              // With initialization or cleanup
 
 // Compose layers
 Layer.merge(layerA, layerB)            // Combine two
@@ -647,4 +649,3 @@ function makeTestLayer(): { layer: Layer; state: State } {
                  │ R = never   │
                  └─────────────┘
 ```
-

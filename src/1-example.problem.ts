@@ -10,7 +10,7 @@
  * - Effect.runSync
  * - Effect.runPromise
  * - Data.TaggedError - Effect's idiomatic way to create typed errors
- * - Effect.catchAll
+ * - Effect.catch
  * - Effect.catchTag
  *
  * Instructions:
@@ -122,9 +122,8 @@ test("Exercise 3: Effect.fail with string", () => {
     Effect.runSync(exercise3());
     return false; // Should not reach here
   } catch (e: any) {
-    // When Effect.runSync throws, it wraps the error in FiberFailure
-    // The actual error message is in e.message
-    return e.message === "Something went wrong";
+    // In Effect v4, runSync throws the typed failure value directly.
+    return e === "Something went wrong";
   }
 });
 
@@ -168,7 +167,7 @@ test("Exercise 5b: Modulo by zero fails", () => {
     Effect.runSync(exercise5(10, 0));
     return false;
   } catch (e: any) {
-    return e.message === "Cannot modulo by zero";
+    return e === "Cannot modulo by zero";
   }
 });
 
@@ -195,7 +194,7 @@ test("Exercise 6b: Square root of negative fails", () => {
     Effect.runSync(exercise6(-4));
     return false;
   } catch (e: any) {
-    return e.message === "Cannot take square root of negative number";
+    return e === "Cannot take square root of negative number";
   }
 });
 
@@ -291,19 +290,15 @@ test("Exercise 9c: Negative number fails with tagged error", () => {
     Effect.runSync(exercise9(-3));
     return false;
   } catch (e: any) {
-    // When Effect.runSync throws a Data.TaggedError, it's nested in FiberFailure
-    // We need to parse JSON to access the nested error
-    const parsed = JSON.parse(JSON.stringify(e));
-    const failure = parsed.cause?.failure;
-    return failure?._tag === "ErrorNegativeNumber" && failure?.value === -3;
+    return e._tag === "ErrorNegativeNumber" && e.value === -3;
   }
 });
 
 // =============================================================================
-// EXERCISE 10: Use Effect.catchAll to handle errors
+// EXERCISE 10: Use Effect.catch to handle errors
 // =============================================================================
 /**
- * Given a function that might fail, use Effect.catchAll to:
+ * Given a function that might fail, use Effect.catch to:
  * - Return 0 if the effect fails
  * - Return the success value otherwise
  *
@@ -313,17 +308,17 @@ function exercise10(n: number): Effect.Effect<number, never, never> {
   // This effect fails for negative numbers (uses exercise6 - square root)
   const riskyEffect = exercise6(n);
 
-  // TODO: Use riskyEffect.pipe(Effect.catchAll(...)) to handle the error
-  // The catchAll handler should return Effect.succeed(0)
+  // TODO: Use riskyEffect.pipe(Effect.catch(...)) to handle the error
+  // The Effect.catch handler should return Effect.succeed(0)
   throw new Error("Not implemented");
 }
 
-test("Exercise 10a: catchAll with success", () => {
+test("Exercise 10a: Effect.catch with success", () => {
   const result = Effect.runSync(exercise10(9));
   return result === 3;
 });
 
-test("Exercise 10b: catchAll handles error", () => {
+test("Exercise 10b: Effect.catch handles error", () => {
   const result = Effect.runSync(exercise10(-9));
   return result === 0;
 });
@@ -400,7 +395,7 @@ test("Exercise 13b: Integer division by zero fails", () => {
     Effect.runSync(exercise13(7, 0));
     return false;
   } catch (e: any) {
-    return e.message === "Division by zero";
+    return e === "Division by zero";
   }
 });
 
@@ -461,22 +456,20 @@ test("Exercise 15b: Typed division fails with correct error", () => {
     Effect.runSync(exercise15(10, 0));
     return false;
   } catch (e: any) {
-    const parsed = JSON.parse(JSON.stringify(e));
-    const failure = parsed.cause?.failure;
-    return failure?._tag === "ErrorDivisionByZero" && failure?.dividend === 10;
+    return e._tag === "ErrorDivisionByZero" && e.dividend === 10;
   }
 });
 
 // =============================================================================
-// EXERCISE 16: Handle typed error with catchAll
+// EXERCISE 16: Handle typed error with Effect.catch
 // =============================================================================
 /**
- * Use exercise15 and catchAll to return Infinity when division by zero occurs
+ * Use exercise15 and Effect.catch to return Infinity when division by zero occurs
  *
  * Note: You must first complete Exercise 14 and 15 for this to work correctly!
  */
 function exercise16(a: number, b: number): Effect.Effect<number, never, never> {
-  // TODO: Use exercise15(a, b).pipe(Effect.catchAll(...))
+  // TODO: Use exercise15(a, b).pipe(Effect.catch(...))
   // Return Effect.succeed(Infinity) in the error handler
   throw new Error("Not implemented");
 }
@@ -531,17 +524,17 @@ test("Exercise 18: Combined arithmetic", () => {
 });
 
 // =============================================================================
-// EXERCISE 19: catchAll with error recovery
+// EXERCISE 19: Effect.catch with error recovery
 // =============================================================================
 /**
- * Use catchAll to handle errors and return a default value
+ * Use Effect.catch to handle errors and return a default value
  * - Use the modulo function from exercise 5
  * - Return -999 when an error occurs
  *
  * Note: You must first complete Exercise 5 for this to work correctly!
  */
 function exercise19(a: number, b: number): Effect.Effect<number, never, never> {
-  // TODO: Use exercise5(a, b).pipe(Effect.catchAll(...))
+  // TODO: Use exercise5(a, b).pipe(Effect.catch(...))
   // Return Effect.succeed(-999) in the error handler
   throw new Error("Not implemented");
 }
@@ -623,9 +616,7 @@ test("Exercise 20e: Calculator divide by zero", () => {
     Effect.runSync(calculator(6, 0, "divide"));
     return false;
   } catch (e: any) {
-    const parsed = JSON.parse(JSON.stringify(e));
-    const failure = parsed.cause?.failure;
-    return failure?._tag === "ErrorDivisionByZero";
+    return e._tag === "ErrorDivisionByZero";
   }
 });
 
@@ -634,9 +625,7 @@ test("Exercise 20f: Calculator invalid operation", () => {
     Effect.runSync(calculator(6, 2, "power"));
     return false;
   } catch (e: any) {
-    const parsed = JSON.parse(JSON.stringify(e));
-    const failure = parsed.cause?.failure;
-    return failure?._tag === "ErrorInvalidOperation" && failure?.operation === "power";
+    return e._tag === "ErrorInvalidOperation" && e.operation === "power";
   }
 });
 

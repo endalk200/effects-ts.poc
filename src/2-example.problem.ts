@@ -10,9 +10,9 @@
  * - Effect.gen (generator syntax)
  * - Effect.all (parallel execution)
  * - Effect.race (racing effects)
- * - Effect.timeout / Effect.timeoutFail (timeouts)
+ * - Effect.timeout / Effect.timeoutOrElse (timeouts)
  * - Effect.retry with Schedule (retries)
- * - Effect.either (error handling as values)
+ * - Effect.result (error handling as values)
  * - Effect.tap / Effect.tapError (side effects)
  * - Custom errors with Data.TaggedError
  *
@@ -25,7 +25,7 @@
  * Run with: bun run src/2-example.solution.ts
  */
 
-import { Effect, Data, Duration, Schedule, Either } from "effect";
+import { Effect, Data, Duration, Schedule, Result } from "effect";
 
 // =============================================================================
 // TEST UTILITIES - DO NOT MODIFY
@@ -152,8 +152,8 @@ function exercise3(): Effect.Effect<never, string, never> {
 }
 
 await testAsync("Exercise 3: Effect.tryPromise failure", async () => {
-  const result = await Effect.runPromise(exercise3().pipe(Effect.either));
-  return Either.isLeft(result) && result.left === "Promise failed";
+  const result = await Effect.runPromise(exercise3().pipe(Effect.result));
+  return Result.isFailure(result) && result.failure === "Promise failed";
 });
 
 // =============================================================================
@@ -217,9 +217,9 @@ function exercise5(id: number): Effect.Effect<User, NetworkError, never> {
 }
 
 await testAsync("Exercise 5: Fetch user with Effect.tryPromise", async () => {
-  const result = await Effect.runPromise(exercise5(1).pipe(Effect.either));
-  if (Either.isLeft(result)) return false;
-  return result.right.id === 1 && typeof result.right.name === "string";
+  const result = await Effect.runPromise(exercise5(1).pipe(Effect.result));
+  if (Result.isFailure(result)) return false;
+  return result.success.id === 1 && typeof result.success.name === "string";
 });
 
 // =============================================================================
@@ -240,9 +240,9 @@ function exercise6(id: number): Effect.Effect<string, NetworkError, never> {
 }
 
 await testAsync("Exercise 6: Effect.map to transform result", async () => {
-  const result = await Effect.runPromise(exercise6(1).pipe(Effect.either));
-  if (Either.isLeft(result)) return false;
-  return typeof result.right === "string" && result.right.length > 0;
+  const result = await Effect.runPromise(exercise6(1).pipe(Effect.result));
+  if (Result.isFailure(result)) return false;
+  return typeof result.success === "string" && result.success.length > 0;
 });
 
 // =============================================================================
@@ -280,10 +280,10 @@ function exercise7(
 }
 
 await testAsync("Exercise 7: Effect.flatMap to chain effects", async () => {
-  const result = await Effect.runPromise(exercise7(1).pipe(Effect.either));
-  if (Either.isLeft(result)) return false;
+  const result = await Effect.runPromise(exercise7(1).pipe(Effect.result));
+  if (Result.isFailure(result)) return false;
   return (
-    result.right.user.id === 1 && typeof result.right.post.title === "string"
+    result.success.user.id === 1 && typeof result.success.post.title === "string"
   );
 });
 
@@ -309,10 +309,10 @@ function exercise8(
 }
 
 await testAsync("Exercise 8: Effect.gen syntax", async () => {
-  const result = await Effect.runPromise(exercise8(1).pipe(Effect.either));
-  if (Either.isLeft(result)) return false;
+  const result = await Effect.runPromise(exercise8(1).pipe(Effect.result));
+  if (Result.isFailure(result)) return false;
   return (
-    result.right.user.id === 1 && typeof result.right.post.title === "string"
+    result.success.user.id === 1 && typeof result.success.post.title === "string"
   );
 });
 
@@ -333,24 +333,24 @@ function exercise9(ids: number[]): Effect.Effect<User[], NetworkError, never> {
 
 await testAsync("Exercise 9: Effect.all parallel execution", async () => {
   const result = await Effect.runPromise(
-    exercise9([1, 2, 3]).pipe(Effect.either)
+    exercise9([1, 2, 3]).pipe(Effect.result)
   );
-  if (Either.isLeft(result)) return false;
-  return result.right.length === 3 && result.right[0]!.id === 1;
+  if (Result.isFailure(result)) return false;
+  return result.success.length === 3 && result.success[0]!.id === 1;
 });
 
 // =============================================================================
-// EXERCISE 10: Handle partial failures with Effect.either
+// EXERCISE 10: Handle partial failures with Effect.result
 // =============================================================================
 /**
  * Fetch multiple users, handling failures gracefully.
  *
- * Use Effect.either to convert each fetch to Either<Error, User>,
+ * Use Effect.result to convert each fetch to Result<User, Error>,
  * then collect successful results.
  *
  * Hints:
- * - effect.pipe(Effect.either) returns Effect<Either<E, A>>
- * - Either.isRight(result) checks for success
+ * - effect.pipe(Effect.result) returns Effect<Result<E, A>>
+ * - Result.isSuccess(result) checks for success
  */
 function exercise10(
   ids: number[]
@@ -384,10 +384,10 @@ function exercise11(ids: number[]): Effect.Effect<User, NetworkError, never> {
 
 await testAsync("Exercise 11: Effect.raceAll", async () => {
   const result = await Effect.runPromise(
-    exercise11([1, 2, 3]).pipe(Effect.either)
+    exercise11([1, 2, 3]).pipe(Effect.result)
   );
-  if (Either.isLeft(result)) return false;
-  return typeof result.right.name === "string";
+  if (Result.isFailure(result)) return false;
+  return typeof result.success.name === "string";
 });
 
 // =============================================================================
@@ -398,7 +398,7 @@ await testAsync("Exercise 11: Effect.raceAll", async () => {
  *
  * Hints:
  * - Create class TimeoutError extends Data.TaggedError("TimeoutError")<{ ms: number }>
- * - Use Effect.timeoutFail({ duration: Duration.millis(ms), onTimeout: () => error })
+ * - Use Effect.timeoutOrElse({ duration: Duration.millis(ms), orElse: () => Effect.fail(error) })
  */
 
 // TODO: Create TimeoutError class
@@ -415,20 +415,20 @@ function exercise12(
   throw new Error("Not implemented");
 }
 
-await testAsync("Exercise 12: Effect.timeoutFail", async () => {
+await testAsync("Exercise 12: Effect.timeoutOrElse", async () => {
   // Test with long timeout (should succeed)
   const result = await Effect.runPromise(
-    exercise12(1, 10000).pipe(Effect.either)
+    exercise12(1, 10000).pipe(Effect.result)
   );
-  if (Either.isLeft(result)) return false;
-  return result.right.id === 1;
+  if (Result.isFailure(result)) return false;
+  return result.success.id === 1;
 });
 
 await testAsync("Exercise 12b: Timeout actually works", async () => {
   // Test with very short timeout (should fail)
-  const result = await Effect.runPromise(exercise12(1, 1).pipe(Effect.either));
-  if (Either.isRight(result)) return false; // Should have timed out
-  return (result.left as { _tag: string })._tag === "TimeoutError";
+  const result = await Effect.runPromise(exercise12(1, 1).pipe(Effect.result));
+  if (Result.isSuccess(result)) return false; // Should have timed out
+  return (result.failure as { _tag: string })._tag === "TimeoutError";
 });
 
 // =============================================================================
@@ -463,9 +463,9 @@ function exercise13(maxRetries: number): Effect.Effect<string, string, never> {
 
 await testAsync("Exercise 13: Effect.retry", async () => {
   resetExercise13();
-  const result = await Effect.runPromise(exercise13(3).pipe(Effect.either));
-  if (Either.isLeft(result)) return false;
-  return result.right === "Success on attempt 3" && exercise13Attempts === 3;
+  const result = await Effect.runPromise(exercise13(3).pipe(Effect.result));
+  if (Result.isFailure(result)) return false;
+  return result.success === "Success on attempt 3" && exercise13Attempts === 3;
 });
 
 // =============================================================================
@@ -490,11 +490,11 @@ function exercise14(
 await testAsync("Exercise 14: Retry with delay", async () => {
   resetExercise13();
   const start = Date.now();
-  const result = await Effect.runPromise(exercise14(3, 50).pipe(Effect.either));
+  const result = await Effect.runPromise(exercise14(3, 50).pipe(Effect.result));
   const elapsed = Date.now() - start;
-  if (Either.isLeft(result)) return false;
+  if (Result.isFailure(result)) return false;
   // Should have delayed at least 100ms (2 retries * 50ms)
-  return result.right === "Success on attempt 3" && elapsed >= 80;
+  return result.success === "Success on attempt 3" && elapsed >= 80;
 });
 
 // =============================================================================
@@ -517,8 +517,8 @@ function exercise15(id: number): Effect.Effect<User, NetworkError, never> {
 
 await testAsync("Exercise 15: Effect.tap for side effects", async () => {
   exercise15Logs.length = 0;
-  const result = await Effect.runPromise(exercise15(1).pipe(Effect.either));
-  if (Either.isLeft(result)) return false;
+  const result = await Effect.runPromise(exercise15(1).pipe(Effect.result));
+  if (Result.isFailure(result)) return false;
   return (
     exercise15Logs.length === 1 &&
     exercise15Logs[0]!.startsWith("Fetched user:")
@@ -545,8 +545,8 @@ function exercise16(id: number): Effect.Effect<User, NetworkError, never> {
 
 await testAsync("Exercise 16: Effect.tapError", async () => {
   exercise16Errors.length = 0;
-  const result = await Effect.runPromise(exercise16(1).pipe(Effect.either));
-  if (Either.isRight(result)) return false; // Should fail
+  const result = await Effect.runPromise(exercise16(1).pipe(Effect.result));
+  if (Result.isSuccess(result)) return false; // Should fail
   return (
     exercise16Errors.length === 1 && exercise16Errors[0]!.startsWith("Error:")
   );
@@ -578,7 +578,7 @@ function exercise17(id: number): Effect.Effect<User, never, never> {
 await testAsync("Exercise 17: Effect.catchTag", async () => {
   // This should succeed with real user
   const result = await Effect.runPromise(exercise17(1));
-  return result.id === 1 || result.id === 0; // Either real user or default
+  return result.id === 1 || result.id === 0; // Result real user or default
 });
 
 // =============================================================================
@@ -601,9 +601,9 @@ function exercise18(
 }
 
 await testAsync("Exercise 18: Effect.all with named object", async () => {
-  const result = await Effect.runPromise(exercise18(1, 1).pipe(Effect.either));
-  if (Either.isLeft(result)) return false;
-  return result.right.user.id === 1 && result.right.post.id === 1;
+  const result = await Effect.runPromise(exercise18(1, 1).pipe(Effect.result));
+  if (Result.isFailure(result)) return false;
+  return result.success.user.id === 1 && result.success.post.id === 1;
 });
 
 // =============================================================================
@@ -626,15 +626,15 @@ function exercise19(
 }
 
 await testAsync("Exercise 19a: Conditional - valid ID", async () => {
-  const result = await Effect.runPromise(exercise19(1).pipe(Effect.either));
-  if (Either.isLeft(result)) return false;
-  return result.right !== null && result.right.id === 1;
+  const result = await Effect.runPromise(exercise19(1).pipe(Effect.result));
+  if (Result.isFailure(result)) return false;
+  return result.success !== null && result.success.id === 1;
 });
 
 await testAsync("Exercise 19b: Conditional - invalid ID", async () => {
-  const result = await Effect.runPromise(exercise19(-1).pipe(Effect.either));
-  if (Either.isLeft(result)) return false;
-  return result.right === null;
+  const result = await Effect.runPromise(exercise19(-1).pipe(Effect.result));
+  if (Result.isFailure(result)) return false;
+  return result.success === null;
 });
 
 // =============================================================================
@@ -650,8 +650,8 @@ await testAsync("Exercise 19b: Conditional - invalid ID", async () => {
  *
  * This exercise combines multiple concepts:
  * - Effect.gen
- * - Effect.timeoutFail
- * - Effect.catchAll or Effect.either
+ * - Effect.timeoutOrElse
+ * - Effect.catch or Effect.result
  * - Multiple sequential operations
  */
 interface WorkflowResult {

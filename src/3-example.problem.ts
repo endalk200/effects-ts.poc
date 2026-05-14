@@ -4,7 +4,7 @@
  * 20 Exercises covering Effect's Service/Dependency Injection System
  *
  * Topics covered:
- * - Context.Tag (defining service identifiers)
+ * - Context.Service (defining service identifiers)
  * - Accessing services in Effects
  * - Layer.succeed / Layer.effect (creating layers)
  * - Layer.merge / Layer.mergeAll (composing layers)
@@ -95,19 +95,17 @@ interface User {
  * }
  *
  * Hints:
- * - Use Context.Tag to create a service identifier
- * - Syntax: class Name extends Context.Tag("Name")<Name, Interface>() {}
+ * - Use Context.Service to create a service identifier
+ * - Syntax: class Name extends Context.Service<Name, Interface>()("Name") {}
  */
 
 // TODO: Replace this placeholder with a proper Logger service tag
-// class Logger extends Context.Tag("Logger")<
+// class Logger extends Context.Service<
 //   Logger,
 //   { readonly log: (message: string) => Effect.Effect<void, never, never> }
-// >() {}
-class Logger extends Context.Tag("TODO_REPLACE")<
-  Logger,
-  { readonly log: (message: string) => Effect.Effect<void, never, never> }
->() {}
+// >()("Logger") {}
+class Logger extends Context.Service<Logger, { readonly log: (message: string) => Effect.Effect<void, never, never> }
+>()("TODO_REPLACE") {}
 
 test("Exercise 1: Create Logger service tag", () => {
   // Check that Logger is a valid tag (key should be "Logger" when implemented)
@@ -124,7 +122,7 @@ test("Exercise 1: Create Logger service tag", () => {
  * - log: prints the message to console with "[LOG]" prefix
  *
  * Hints:
- * - Use Layer.succeed(Tag, implementation)
+ * - Use Layer.succeed(Tag)(implementation)
  * - Implementation methods should return Effect.sync(() => ...)
  */
 
@@ -195,13 +193,11 @@ await testAsync("Exercise 3: Access service in Effect", async () => {
  */
 
 // TODO: Create Config service tag
-class Config extends Context.Tag("TODO_REPLACE")<
-  Config,
-  {
+class Config extends Context.Service<Config, {
     readonly apiUrl: string;
     readonly timeout: number;
   }
->() {}
+>()("TODO_REPLACE") {}
 
 test("Exercise 4: Create Config service tag", () => {
   return (Config as { key: string }).key === "Config";
@@ -276,13 +272,11 @@ await testAsync("Exercise 6: Access multiple services", async () => {
  */
 
 // TODO: Create Database service tag
-class Database extends Context.Tag("TODO_REPLACE")<
-  Database,
-  {
+class Database extends Context.Service<Database, {
     readonly findUser: (id: number) => Effect.Effect<User | null, never, never>;
     readonly saveUser: (user: User) => Effect.Effect<void, never, never>;
   }
->() {}
+>()("TODO_REPLACE") {}
 
 test("Exercise 7: Create Database service tag", () => {
   return (Database as { key: string }).key === "Database";
@@ -409,16 +403,14 @@ await testAsync("Exercise 10: Merge multiple layers", async () => {
  */
 
 // TODO: Create UserService tag
-class UserService extends Context.Tag("TODO_REPLACE")<
-  UserService,
-  {
+class UserService extends Context.Service<UserService, {
     readonly getUser: (id: number) => Effect.Effect<User | null, never, never>;
     readonly createUser: (
       name: string,
       email: string
     ) => Effect.Effect<User, never, never>;
   }
->() {}
+>()("TODO_REPLACE") {}
 
 test("Exercise 11: Create UserService tag", () => {
   return (UserService as { key: string }).key === "UserService";
@@ -637,16 +629,14 @@ await testAsync("Exercise 16: Complete test setup", async () => {
  */
 
 // TODO: Create EmailService tag
-class EmailService extends Context.Tag("TODO_REPLACE")<
-  EmailService,
-  {
+class EmailService extends Context.Service<EmailService, {
     readonly sendEmail: (
       to: string,
       subject: string,
       body: string
     ) => Effect.Effect<boolean, never, never>;
   }
->() {}
+>()("TODO_REPLACE") {}
 
 // TODO: Implement MockEmailServiceLive layer
 // Replace the placeholder below with:
@@ -690,15 +680,13 @@ await testAsync("Exercise 17: EmailService", async () => {
  */
 
 // TODO: Create NotificationService tag
-class NotificationService extends Context.Tag("TODO_REPLACE")<
-  NotificationService,
-  {
+class NotificationService extends Context.Service<NotificationService, {
     readonly notifyUser: (
       userId: number,
       message: string
     ) => Effect.Effect<boolean, never, never>;
   }
->() {}
+>()("TODO_REPLACE") {}
 
 // TODO: Create NotificationServiceLive layer
 const NotificationServiceLive: Layer.Layer<
@@ -800,14 +788,12 @@ class DatabaseError extends Data.TaggedError("TODO_REPLACE")<{
 }> {}
 
 // TODO: Create SafeDatabase tag
-class SafeDatabase extends Context.Tag("TODO_REPLACE")<
-  SafeDatabase,
-  {
+class SafeDatabase extends Context.Service<SafeDatabase, {
     readonly findUser: (
       id: number
     ) => Effect.Effect<User | null, DatabaseError, never>;
   }
->() {}
+>()("TODO_REPLACE") {}
 
 // TODO: Implement SafeDatabaseLive that fails for id <= 0
 // Replace the placeholder below with proper implementation:
@@ -835,7 +821,7 @@ await testAsync("Exercise 19: Service with errors", async () => {
 
   const result = await Effect.runPromise(
     Effect.provide(effect, SafeDatabaseLive).pipe(
-      Effect.catchAll((e) => Effect.succeed((e as DatabaseError).cause))
+      Effect.catch((e) => Effect.succeed((e as DatabaseError).cause))
     )
   );
 

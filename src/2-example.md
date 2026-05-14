@@ -252,7 +252,7 @@ const withTimeout = fetchUser(1).pipe(Effect.timeout(Duration.seconds(5)));
 // Returns None if timeout, Some(user) if success
 ```
 
-### Timeout with Custom Error – `Effect.timeoutFail`
+### Timeout with Custom Error – `Effect.timeoutOrElse`
 
 ```typescript
 class TimeoutError extends Data.TaggedError("TimeoutError")<{
@@ -261,13 +261,13 @@ class TimeoutError extends Data.TaggedError("TimeoutError")<{
 }> {}
 
 const withTimeout = fetchUser(1).pipe(
-  Effect.timeoutFail({
+  Effect.timeoutOrElse({
     duration: Duration.seconds(5),
-    onTimeout: () =>
-      new TimeoutError({
+    orElse: () =>
+      Effect.fail(new TimeoutError({
         operation: "fetchUser",
         timeoutMs: 5000,
-      }),
+      })),
   })
 );
 // Type: Effect<User, Error | TimeoutError, never>
@@ -321,20 +321,20 @@ Schedule.once; // Retry exactly once
 
 ---
 
-## Error Handling as Values with `Effect.either`
+## Error Handling as Values with `Effect.result`
 
 Convert errors to values for graceful handling:
 
 ```typescript
-import { Either } from "effect";
+import { Result } from "effect";
 
-const safeResult = yield * fetchUser(1).pipe(Effect.either);
-// Type: Either<Error, User>
+const safeResult = yield * fetchUser(1).pipe(Effect.result);
+// Type: Result<User, Error>
 
-if (Either.isRight(safeResult)) {
-  console.log("Success:", safeResult.right.name);
+if (Result.isSuccess(safeResult)) {
+  console.log("Success:", safeResult.success.name);
 } else {
-  console.log("Failed:", safeResult.left.message);
+  console.log("Failed:", safeResult.failure.message);
 }
 ```
 
@@ -346,7 +346,7 @@ Like `Promise.allSettled`:
 const fetchAllSafe = (ids: number[]) => {
   const effects = ids.map((id) =>
     fetchUser(id).pipe(
-      Effect.either,
+      Effect.result,
       Effect.map((result) => ({ id, result }))
     )
   );
@@ -354,10 +354,10 @@ const fetchAllSafe = (ids: number[]) => {
   return Effect.all(effects, { concurrency: "unbounded" }).pipe(
     Effect.map((results) => {
       const successful = results
-        .filter((r) => Either.isRight(r.result))
-        .map((r) => (r.result as Either.Right<Error, User>).right);
+        .filter((r) => Result.isSuccess(r.result))
+        .map((r) => r.result.success);
       const failed = results
-        .filter((r) => Either.isLeft(r.result))
+        .filter((r) => Result.isFailure(r.result))
         .map((r) => r.id);
       return { successful, failed };
     })
@@ -466,9 +466,9 @@ function fetchUserRobust(
           )
     ),
     // Add timeout
-    Effect.timeoutFail({
+    Effect.timeoutOrElse({
       duration: Duration.seconds(5),
-      onTimeout: () => new TimeoutError({ url: `/api/users/${id}` }),
+      orElse: () => Effect.fail(new TimeoutError({ url: `/api/users/${id}` })),
     }),
     // Add retry
     Effect.retry(Schedule.recurs(3)),
@@ -493,7 +493,7 @@ function fetchUserRobust(
 | Race          | `Promise.race()`       | `Effect.raceAll()`                |
 | Timeout       | Manual `Promise.race`  | `Effect.timeout()`                |
 | Retry         | Manual loop            | `Effect.retry(Schedule)`          |
-| Either result | Manual try/catch       | `Effect.either`                   |
+| Result result | Manual try/catch       | `Effect.result`                   |
 
 ---
 
@@ -508,7 +508,7 @@ function fetchUserRobust(
 7. **`Effect.raceAll`** – First to complete wins (others interrupted)
 8. **`Effect.timeout`** – Add timeouts to any effect
 9. **`Effect.retry`** – Automatic retries with Schedule
-10. **`Effect.either`** – Convert errors to values
+10. **`Effect.result`** – Convert errors to values
 
 ---
 
@@ -526,7 +526,7 @@ The exercises will have you fetch data, handle timeouts, implement retries, and 
 ## Quick Reference
 
 ```typescript
-import { Effect, Duration, Schedule, Either, Data } from "effect";
+import { Effect, Duration, Schedule, Result, Data } from "effect";
 
 // Wrap Promises
 Effect.tryPromise({
@@ -560,10 +560,10 @@ Effect.raceAll([effectA, effectB, effectC]);
 // Timeouts
 effect.pipe(
   Effect.timeout(Duration.seconds(5)), // Returns Option
-  Effect.timeoutFail({
+  Effect.timeoutOrElse({
     // Custom error
     duration: Duration.seconds(5),
-    onTimeout: () => new TimeoutError(),
+    orElse: () => Effect.fail(new TimeoutError()),
   })
 );
 
@@ -574,7 +574,7 @@ effect.pipe(
 );
 
 // Error as value
-Effect.either; // Effect<A, E> → Effect<Either<E, A>, never>
+Effect.result; // Effect<A, E> -> Effect<Result<A, E>, never>
 
 // Side effects
 effect.pipe(

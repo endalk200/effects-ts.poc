@@ -20,7 +20,7 @@
  *
  * 4. Error Handling:
  *    - Data.TaggedError - Effect's built-in way to create typed errors
- *    - Effect.catchAll - Handle all errors
+ *    - Effect.catch - Handle all errors
  *    - Effect.catchTag - Handle specific tagged errors
  */
 
@@ -180,10 +180,10 @@ function divideWithCustomError(
 // =============================================================================
 
 /**
- * Effect.catchAll - Handle any error and recover with a new Effect
+ * Effect.catch - Handle any error and recover with a new Effect
  *
  * Type signature:
- * catchAll<A, E, R, A2, E2, R2>(
+ * Effect.catch<A, E, R, A2, E2, R2>(
  *   self: Effect<A, E, R>,
  *   handler: (e: E) => Effect<A2, E2, R2>
  * ): Effect<A | A2, E2, R | R2>
@@ -196,8 +196,8 @@ function divideWithCustomError(
 
 // Example: Handling division by zero and recovering with a default value
 const safeDivide = divideWithCustomError(6, 0).pipe(
-  // catchAll receives the error and must return an Effect
-  Effect.catchAll((error) => {
+  // Effect.catch receives the error and must return an Effect
+  Effect.catch((error) => {
     // With Data.TaggedError, we have access to _tag and all custom fields
     console.log(`Caught error: ${error._tag}`);
     console.log(`Attempted: ${error.dividend} / ${error.divisor}`);
@@ -213,7 +213,7 @@ console.log("Safe result:", safeResult); // Output: Safe result: 0
 /**
  * Effect.catchTag - Handle a specific tagged error
  *
- * This is more precise than catchAll - it only handles errors with the specified tag.
+ * This is more precise than Effect.catch - it only handles errors with the specified tag.
  * Other errors pass through unchanged.
  *
  * This is useful when you have multiple error types and want to handle them differently.
@@ -306,7 +306,7 @@ console.log("Combined result (sqrt of 16/2):", combinedResult); // Output: 2.828
  *    - Automatically adds _tag property for discrimination
  *    - Extends Error for stack traces
  *    - Use Effect.catchTag("TagName", handler) for specific errors
- *    - Use Effect.catchAll(handler) for any error
+ *    - Use Effect.catch(handler) for any error
  *
  * 5. Benefits over try/catch:
  *    - Errors are tracked in the type system

@@ -181,13 +181,13 @@ Now the type signature says **exactly** what error can occur.
 
 ## Handling Errors
 
-### `Effect.catchAll` – Handle Any Error
+### `Effect.catch` – Handle Any Error
 
-`catchAll` catches any error and lets you recover:
+`Effect.catch` catches any error and lets you recover:
 
 ```typescript
 const safeDivide = divideWithCustomError(6, 0).pipe(
-  Effect.catchAll((error) => {
+  Effect.catch((error) => {
     console.log(`Caught: ${error._tag}`);
     console.log(`Tried: ${error.dividend} / ${error.divisor}`);
     return Effect.succeed(0); // Recover with default value
@@ -201,7 +201,7 @@ const result = Effect.runSync(safeDivide); // 0 (no throw!)
 
 - The handler receives the error with full type information
 - You must return an Effect (recover or re-fail)
-- After `catchAll`, the error type becomes `never` (if you recovered)
+- After `Effect.catch`, the error type becomes `never` (if you recovered)
 
 ### `Effect.catchTag` – Handle Specific Errors
 
@@ -238,12 +238,12 @@ Effect uses **pipe** for chaining operations:
 
 ```typescript
 // Instead of nested calls:
-// Effect.catchAll(Effect.map(divide(10, 2), x => x * 2), handleError)
+// Effect.catch(Effect.map(divide(10, 2), x => x * 2), handleError)
 
 // Use pipe:
 divide(10, 2).pipe(
   Effect.map((x) => x * 2),
-  Effect.catchAll(handleError)
+  Effect.catch(handleError)
 );
 ```
 
@@ -278,7 +278,7 @@ const combined = divide(16, 2).pipe(
 | -------------- | --------------------- | ----------------------------------- |
 | Success value  | Return type           | `A` in `Effect<A, E, R>`            |
 | Errors         | Hidden (throws)       | Explicit `E` in `Effect<A, E, R>`   |
-| Error handling | try/catch             | `catchAll`, `catchTag`              |
+| Error handling | try/catch             | `Effect.catch`, `catchTag`              |
 | Custom errors  | `class extends Error` | `Data.TaggedError`                  |
 | Composition    | Nested calls          | `.pipe()` chain                     |
 | Execution      | Immediate             | Lazy (needs `runSync`/`runPromise`) |
@@ -292,7 +292,7 @@ const combined = divide(16, 2).pipe(
 3. **`Effect.succeed(value)`** – wrap successful values
 4. **`Effect.fail(error)`** – create failed effects
 5. **`Data.TaggedError`** – the idiomatic way to create typed errors
-6. **`Effect.catchAll`** – handle any error
+6. **`Effect.catch`** – handle any error
 7. **`Effect.catchTag`** – handle specific tagged errors
 8. **`.pipe()`** – chain operations cleanly
 9. **`Effect.runSync`** / **`Effect.runPromise`** – actually execute effects
@@ -331,7 +331,7 @@ class MyError extends Data.TaggedError("MyError")<{
 
 // Error handling
 effect.pipe(
-  Effect.catchAll((error) => Effect.succeed(defaultValue)),
+  Effect.catch((error) => Effect.succeed(defaultValue)),
   Effect.catchTag("SpecificError", (error) => Effect.succeed(fallback))
 );
 

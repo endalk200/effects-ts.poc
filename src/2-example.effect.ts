@@ -11,7 +11,7 @@
  * - Effect.race for racing
  * - Effect.timeout for timeouts
  * - Effect.retry for retries
- * - Effect.either for error handling
+ * - Effect.result for error handling
  * - Custom error types with Data.TaggedError
  *
  * Key Concepts:
@@ -21,10 +21,10 @@
  * 4. Effect.race - Returns the first effect to complete (like Promise.race)
  * 5. Effect.timeout - Adds timeout to an effect
  * 6. Effect.retry - Automatically retries failed effects
- * 7. Effect.either - Converts errors to Either type for safe handling
+ * 7. Effect.result - Converts errors to Result type for safe handling
  */
 
-import { Effect, Data, Duration, Schedule, Either } from "effect";
+import { Effect, Data, Duration, Schedule, Result } from "effect";
 
 // =============================================================================
 // TYPES
@@ -312,7 +312,7 @@ function fetchUserWithPosts(
  * Options:
  * - { concurrency: number } - Limit concurrent operations
  * - { concurrency: "unbounded" } - No limit (like Promise.all)
- * - { mode: "either" } - Return Either for each result
+ * - { mode: "either" } - Return Result for each result
  */
 function fetchUsersParallel(
   ids: number[]
@@ -326,7 +326,7 @@ function fetchUsersParallel(
 // 6. PARALLEL ASYNC - Fetch with partial failure handling
 // =============================================================================
 /**
- * Effect.either converts an Effect<A, E> into Effect<Either<E, A>>
+ * Effect.result converts an Effect<A, E> into Effect<Result<E, A>>
  * This allows handling errors without failing the entire operation.
  *
  * Combined with Effect.all, this mimics Promise.allSettled behavior.
@@ -338,7 +338,7 @@ function fetchUsersWithPartialFailure(ids: number[]): Effect.Effect<
 > {
   const effects = ids.map((id, index) =>
     fetchUser(id).pipe(
-      Effect.either,
+      Effect.result,
       Effect.map((result) => ({ id: ids[index]!, result }))
     )
   );
@@ -349,8 +349,8 @@ function fetchUsersWithPartialFailure(ids: number[]): Effect.Effect<
       const failed: number[] = [];
 
       for (const { id, result } of results) {
-        if (Either.isRight(result)) {
-          successful.push(result.right);
+        if (Result.isSuccess(result)) {
+          successful.push(result.success);
         } else {
           failed.push(id);
         }
@@ -386,7 +386,7 @@ function fetchFirstAvailable(
  * Effect.timeout adds a timeout to an effect.
  *
  * If the effect doesn't complete in time, it returns Option.none().
- * Use Effect.timeoutFail to fail with a custom error instead.
+ * Use Effect.timeoutOrElse to fail with a custom error instead.
  *
  * The effect is properly interrupted when timeout occurs.
  */
@@ -395,9 +395,10 @@ function fetchUserWithTimeout(
   timeoutMs: number
 ): Effect.Effect<User, HttpError | UserNotFoundError | TimeoutError, never> {
   return fetchUser(id).pipe(
-    Effect.timeoutFail({
+    Effect.timeoutOrElse({
       duration: Duration.millis(timeoutMs),
-      onTimeout: () => new TimeoutError({ operation: "fetchUser", timeoutMs }),
+      orElse: () =>
+        Effect.fail(new TimeoutError({ operation: "fetchUser", timeoutMs })),
     })
   );
 }
@@ -424,7 +425,7 @@ function fetchUserWithRetry(
   return fetchUser(id).pipe(
     Effect.retry(
       Schedule.recurs(maxRetries - 1).pipe(
-        Schedule.addDelay(() => Duration.millis(delayMs))
+        Schedule.addDelay(() => Effect.succeed(Duration.millis(delayMs)))
       )
     ),
     Effect.tapError((error) =>
@@ -434,16 +435,16 @@ function fetchUserWithRetry(
 }
 
 // =============================================================================
-// 10. ERROR HANDLING - Typed error handling with Effect.either
+// 10. ERROR HANDLING - Typed error handling with Effect.result
 // =============================================================================
 /**
- * Effect.either converts Effect<A, E> to Effect<Either<E, A>>
+ * Effect.result converts Effect<A, E> to Effect<Result<E, A>>
  *
  * This is useful when you want to handle errors without
  * losing the error information or transforming the type.
  *
- * Either.isRight(result) - Check if successful
- * Either.isLeft(result) - Check if failed
+ * Result.isSuccess(result) - Check if successful
+ * Result.isFailure(result) - Check if failed
  */
 function fetchUserSafe(
   id: number
@@ -454,12 +455,12 @@ function fetchUserSafe(
   never
 > {
   return fetchUser(id).pipe(
-    Effect.either,
+    Effect.result,
     Effect.map((result) => {
-      if (Either.isRight(result)) {
-        return { success: true as const, data: result.right };
+      if (Result.isSuccess(result)) {
+        return { success: true as const, data: result.success };
       } else {
-        const error = result.left;
+        const error = result.failure;
         return {
           success: false as const,
           error: {
@@ -534,9 +535,9 @@ function complexOperation(
     const user = yield* fetchUser(userId);
 
     // Try to fetch first post (may not exist)
-    const firstPostResult = yield* fetchPost(1).pipe(Effect.either);
-    const firstPost = Either.isRight(firstPostResult)
-      ? firstPostResult.right
+    const firstPostResult = yield* fetchPost(1).pipe(Effect.result);
+    const firstPost = Result.isSuccess(firstPostResult)
+      ? firstPostResult.success
       : null;
 
     // Create display name
@@ -592,48 +593,48 @@ const runExamples: Effect.Effect<void, never, never> = Effect.gen(function* () {
 
   // Example 2: Fetch single user
   console.log("2. Fetch single user:");
-  const userResult = yield* fetchUser(1).pipe(Effect.either);
-  if (Either.isRight(userResult)) {
+  const userResult = yield* fetchUser(1).pipe(Effect.result);
+  if (Result.isSuccess(userResult)) {
     console.log(
-      `   User: ${userResult.right.name} (${userResult.right.email})\n`
+      `   User: ${userResult.success.name} (${userResult.success.email})\n`
     );
   } else {
-    console.log(`   Error: ${userResult.left._tag}\n`);
+    console.log(`   Error: ${userResult.failure._tag}\n`);
   }
 
   // Example 3: Fetch post
   console.log("3. Fetch post:");
-  const postResult = yield* fetchPost(1).pipe(Effect.either);
-  if (Either.isRight(postResult)) {
-    console.log(`   Post: ${postResult.right.title.substring(0, 50)}...\n`);
+  const postResult = yield* fetchPost(1).pipe(Effect.result);
+  if (Result.isSuccess(postResult)) {
+    console.log(`   Post: ${postResult.success.title.substring(0, 50)}...\n`);
   } else {
-    console.log(`   Error: ${postResult.left._tag}\n`);
+    console.log(`   Error: ${postResult.failure._tag}\n`);
   }
 
   // Example 4: Sequential fetch
   console.log("4. Sequential fetch (user + posts):");
-  const seqResult = yield* fetchUserWithPosts(1).pipe(Effect.either);
-  if (Either.isRight(seqResult)) {
+  const seqResult = yield* fetchUserWithPosts(1).pipe(Effect.result);
+  if (Result.isSuccess(seqResult)) {
     console.log(
-      `   User: ${seqResult.right.user.name}, Posts: ${seqResult.right.posts.length}\n`
+      `   User: ${seqResult.success.user.name}, Posts: ${seqResult.success.posts.length}\n`
     );
   } else {
-    console.log(`   Error: ${seqResult.left._tag}\n`);
+    console.log(`   Error: ${seqResult.failure._tag}\n`);
   }
 
   // Example 5: Parallel fetch
   console.log("5. Parallel fetch (3 users):");
   const parallelResult = yield* fetchUsersParallel([1, 2, 3]).pipe(
-    Effect.either
+    Effect.result
   );
-  if (Either.isRight(parallelResult)) {
+  if (Result.isSuccess(parallelResult)) {
     console.log(
-      `   Fetched ${parallelResult.right.length} users: ${parallelResult.right
+      `   Fetched ${parallelResult.success.length} users: ${parallelResult.success
         .map((u) => u.name)
         .join(", ")}\n`
     );
   } else {
-    console.log(`   Error: ${parallelResult.left._tag}\n`);
+    console.log(`   Error: ${parallelResult.failure._tag}\n`);
   }
 
   // Example 6: Partial failure handling
@@ -646,12 +647,12 @@ const runExamples: Effect.Effect<void, never, never> = Effect.gen(function* () {
   // Example 7: Fetch with timeout
   console.log("7. Fetch with timeout (5s timeout):");
   const timeoutResult = yield* fetchUserWithTimeout(1, 5000).pipe(
-    Effect.either
+    Effect.result
   );
-  if (Either.isRight(timeoutResult)) {
-    console.log(`   User: ${timeoutResult.right.name}\n`);
+  if (Result.isSuccess(timeoutResult)) {
+    console.log(`   User: ${timeoutResult.success.name}\n`);
   } else {
-    console.log(`   Error: ${timeoutResult.left._tag}\n`);
+    console.log(`   Error: ${timeoutResult.failure._tag}\n`);
   }
 
   // Example 8: Safe fetch with typed errors
@@ -665,25 +666,25 @@ const runExamples: Effect.Effect<void, never, never> = Effect.gen(function* () {
 
   // Example 9: Transform result
   console.log("9. Transform result:");
-  const displayResult = yield* fetchUserDisplayName(1).pipe(Effect.either);
-  if (Either.isRight(displayResult)) {
-    console.log(`   Display name: ${displayResult.right}\n`);
+  const displayResult = yield* fetchUserDisplayName(1).pipe(Effect.result);
+  if (Result.isSuccess(displayResult)) {
+    console.log(`   Display name: ${displayResult.success}\n`);
   } else {
-    console.log(`   Error: ${displayResult.left._tag}\n`);
+    console.log(`   Error: ${displayResult.failure._tag}\n`);
   }
 
   // Example 10: Conditional fetch
   console.log("10. Conditional fetch:");
-  const validUser = yield* fetchUserIfValid(1).pipe(Effect.either);
-  const invalidUser = yield* fetchUserIfValid(-1).pipe(Effect.either);
+  const validUser = yield* fetchUserIfValid(1).pipe(Effect.result);
+  const invalidUser = yield* fetchUserIfValid(-1).pipe(Effect.result);
   console.log(
     `   Valid ID (1): ${
-      Either.isRight(validUser) ? validUser.right?.name ?? "null" : "error"
+      Result.isSuccess(validUser) ? validUser.success?.name ?? "null" : "error"
     }`
   );
   console.log(
     `   Invalid ID (-1): ${
-      Either.isRight(invalidUser) ? invalidUser.right?.name ?? "null" : "error"
+      Result.isSuccess(invalidUser) ? invalidUser.success?.name ?? "null" : "error"
     }\n`
   );
 
@@ -757,14 +758,14 @@ export type { User, Post };
  * 6. Effect.raceAll - First to complete wins:
  *    Effect.raceAll(effects)
  *
- * 7. Effect.timeout / Effect.timeoutFail - Add timeouts:
- *    effect.pipe(Effect.timeoutFail({ duration, onTimeout }))
+ * 7. Effect.timeout / Effect.timeoutOrElse - Add timeouts:
+ *    effect.pipe(Effect.timeoutOrElse({ duration, orElse }))
  *
  * 8. Effect.retry - Automatic retries:
  *    effect.pipe(Effect.retry(Schedule.recurs(3)))
  *
- * 9. Effect.either - Handle errors as values:
- *    effect.pipe(Effect.either)
+ * 9. Effect.result - Handle errors as values:
+ *    effect.pipe(Effect.result)
  *
  * 10. Effect.tap / Effect.tapError - Side effects:
  *     effect.pipe(Effect.tap(x => Effect.log(x)))

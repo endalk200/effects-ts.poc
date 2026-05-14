@@ -69,7 +69,7 @@ For each example (1, 2, 3), follow this sequence:
 - `Effect<A, E, R>` type
 - `Effect.succeed` / `Effect.fail`
 - `Data.TaggedError`
-- `Effect.catchAll` / `Effect.catchTag`
+- `Effect.catch` / `Effect.catchTag`
 
 ### Example 2: Async Operations
 
@@ -77,11 +77,11 @@ For each example (1, 2, 3), follow this sequence:
 - `Effect.sleep`
 - `Effect.all` (parallel)
 - `Effect.timeout` / `Effect.retry`
-- `Effect.either`
+- `Effect.result`
 
 ### Example 3: Dependency Injection
 
-- `Context.Tag`
+- `Context.Service`
 - `Layer.succeed` / `Layer.effect`
 - `Layer.merge` / `Layer.provide`
 - Testing with mock layers
